@@ -66,6 +66,22 @@ function createDOMElementFromVNode(vNode) {
 }
 
 /**
+ * 创建一个 key 为节点的 key，val 为节点在数组中 index 的 map
+ * @param {*} oldCh oldCh 数组
+ * @return {*} Key-Index Map
+ */
+function createKeyToOldIdxMap(oldCh) {
+  let map = {};
+  for (let i = 0; i < oldCh.length; i++) {
+    let key = oldCh[i].key;
+    if (key) {
+      map[key] = i;
+    }
+  }
+  return map;
+}
+
+/**
  * diff，更新 parenEl 内的子元素，核心
  * @param {HTMLElement} parentEl 需要被更新的元素
  * @param {Array<vnode>} oldCh oldVNode.children 数组
@@ -82,22 +98,60 @@ function updateChildren(parentEl, oldCh, newCh) {
     newStartVNode = newCh[0],
     newEndVNode = newCh[newEndIdx];
 
-  // 注意：针对常见的 DOM 操作进行优化，例如数组的前后插入，翻转数组
+  // map: key 为节点 key，val 为节点在数组中的 index
+  let map = createKeyToOldIdxMap(oldCh);
 
-  // 依据 newCh 和 oldCh 中较短的数组进行匹配
+  // 注意：针对常见的 DOM 操作进行优化，例如数组的前后插入，翻转数组
+  // 依据 newCh 和 oldCh 中较短的数组进行匹配，同时尽可能复用节点
   while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
-    // 向后插入（push），对比节点数组的头部，进行匹配
     if (sameVNode(oldStartVNode, newStartVNode)) {
       patch(oldStartVNode, newStartVNode);
       oldStartVNode = oldCh[++oldStartIdx];
       newStartVNode = newCh[++newStartIdx];
     } else if (sameVNode(oldEndVNode, newEndVNode)) {
-      // 向前插入（unshift），对比节点数组的尾部，进行匹配
       patch(oldEndVNode, newEndVNode);
       oldEndVNode = oldCh[--oldEndIdx];
       newEndVNode = newCh[--newEndIdx];
+    } else if (sameVNode(oldStartVNode, newEndVNode)) {
+      // 旧首节点和新尾节点相同，例如数组 reverse，patch 同时需要移动元素
+      patch(oldStartVNode, newEndVNode);
+      // 向后移动元素，用 insertBefore 和 .nextSibling 模拟 insertAfter 的效果
+      parentEl.insertBefore(oldStartVNode.el, oldEndVNode.el.nextSibling);
+      oldStartVNode = oldCh[++oldStartIdx];
+      newEndVNode = newCh[--newEndIdx];
+    } else if (sameVNode(oldEndVNode, newStartVNode)) {
+      patch(oldEndVNode, newStartVNode);
+      // 将元素提前
+      parentEl.insertBefore(oldEndVNode.el, oldStartVNode.el);
+      oldEndVNode = oldCh[--oldEndIdx];
+      newStartVNode = newCh[++newStartIdx];
+    } else {
+      // 四对 VNode 都不能匹配，则建立映射表，通过 newStartVNode 的 key 查表比对
+      // 处理置空后，之后循环到的节点为 undefined 的情况
+      if (!oldStartVNode) {
+        oldStartVNode = oldCh[++oldStartIdx];
+      } else if (!oldEndIdx) {
+        oldEndVNode = oldCh[--oldEndIdx];
+      }
+      const index = map[newStartVNode.key];
+      // 如果存在则复用
+      if (index) {
+        const vNodeToMove = oldCh[index];
+        // 更新属性和 children
+        patch(vNodeToMove, newStartVNode);
+        parentEl.insertBefore(vNodeToMove.el, oldStartVNode.el);
+        oldCh[index] = undefined;
+      } else {
+        // 不存在则创建并插入
+        parentEl.insertBefore(
+          createDOMElementFromVNode(newStartVNode),
+          oldStartVNode.el
+        );
+      }
+      newStartVNode = newCh[++newStartIdx];
     }
   }
+
   // console.log(oldStartIdx, oldEndIdx, newStartIdx, newEndIdx, parentEl);
 
   // 在 while 循环结束后，即比对完成后，新旧节点的首指针 > 尾指针
@@ -108,7 +162,9 @@ function updateChildren(parentEl, oldCh, newCh) {
     但是 oldCh 中的节点并没有遍历完，需要删除 oldCh 中的多余节点
   */
   if (oldStartIdx <= oldEndIdx) {
-    console.log('remove', parentEl);
+    for (let i = oldStartIdx; i <= oldEndIdx; i++) {
+      oldCh[i] && parentEl.removeChild(oldCh[i].el);
+    }
   }
   /* 
     在最后一次 while 循环时，由于 oldStartIdx > oldEndIdx，提前终止了循环，
@@ -136,6 +192,7 @@ function updateChildren(parentEl, oldCh, newCh) {
  * @param {vnode} newVNode
  */
 function patch(oldVNode, newVNode) {
+  // console.log(oldVNode, newVNode);
   // 如果类型不同
   if (oldVNode.type !== newVNode.type) {
     // 利用 parentNode 来替换 DOM 元素

@@ -24,9 +24,9 @@ function vNode(type, props, key, children, text = undefined) {
  * @return {*}
  */
 function sameVNode(node1, node2) {
-  if (node1.key && node2.key) {
-    return node1.key === node2.key && node1.type === node2.type;
+  if (node1?.key && node2?.key) {
+    return node1?.key === node2?.key && node1?.type === node2?.type;
   } else {
-    return node1.type === node2.type;
+    return node1?.type === node2?.type;
   }
 }
