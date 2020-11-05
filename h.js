@@ -1,8 +1,8 @@
 /**
  * 递归生成虚拟 DOM 节点
- * @param {*} type 类型
- * @param {*} props 节点属性
- * @param {*} children 子节点
+ * @param {HTMLElementTagNameMap} type 类型
+ * @param {vnode.props} props 节点属性
+ * @param {Array<vnode>} children 子节点
  */
 function createElement(type, props = {}, ...children) {
   let key;
@@ -12,6 +12,7 @@ function createElement(type, props = {}, ...children) {
   }
   children = children.map((child) => {
     if (typeof child === 'string') {
+      // 针对文本子元素，包一层
       return vNode(undefined, undefined, undefined, undefined, child);
     } else {
       return child;
